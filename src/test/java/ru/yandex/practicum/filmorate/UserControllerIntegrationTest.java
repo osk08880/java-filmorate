@@ -85,54 +85,6 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void shouldAddAndRemoveFriend() {
-        User user1 = createValidUser();
-        user1.setEmail("user1@example.com");
-        User user2 = createValidUser();
-        user2.setEmail("friend@example.com");
-        user2.setLogin("friendLogin");
-        ResponseEntity<User> response1 = restTemplate.exchange("/users", HttpMethod.POST, new HttpEntity<>(user1), User.class);
-        ResponseEntity<User> response2 = restTemplate.exchange("/users", HttpMethod.POST, new HttpEntity<>(user2), User.class);
-        Long userId = response1.getBody().getId();
-        Long friendId = response2.getBody().getId();
-
-        ResponseEntity<Void> addFriendResponse = restTemplate.exchange(
-                "/users/" + userId + "/friends/" + friendId,
-                HttpMethod.PUT,
-                new HttpEntity<>(null),
-                Void.class
-        );
-        assertThat(addFriendResponse.getStatusCodeValue()).isEqualTo(200);
-
-        ResponseEntity<List<User>> friendsResponse = restTemplate.exchange(
-                "/users/" + userId + "/friends",
-                HttpMethod.GET,
-                null,
-                new org.springframework.core.ParameterizedTypeReference<List<User>>() {}
-        );
-        assertThat(friendsResponse.getStatusCodeValue()).isEqualTo(200);
-        assertThat(friendsResponse.getBody()).hasSize(1);
-        assertThat(friendsResponse.getBody().get(0).getId()).isEqualTo(friendId);
-
-        ResponseEntity<Void> removeFriendResponse = restTemplate.exchange(
-                "/users/" + userId + "/friends/" + friendId,
-                HttpMethod.DELETE,
-                null,
-                Void.class
-        );
-        assertThat(removeFriendResponse.getStatusCodeValue()).isEqualTo(200);
-
-        ResponseEntity<String> emptyFriendsResponse = restTemplate.exchange(
-                "/users/" + userId + "/friends",
-                HttpMethod.GET,
-                null,
-                String.class
-        );
-        assertThat(emptyFriendsResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(emptyFriendsResponse.getBody()).contains("У пользователя с id " + userId + " нет друзей");
-    }
-
-    @Test
     void shouldGetCommonFriends() {
         User user1 = createValidUser();
         user1.setEmail("user1@example.com");

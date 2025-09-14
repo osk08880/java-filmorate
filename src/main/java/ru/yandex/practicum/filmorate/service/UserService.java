@@ -70,11 +70,6 @@ public class UserService {
         User user = userStorage.findById(userId);
         log.debug("Найден пользователь id={}", userId);
 
-        if (user.getFriends().isEmpty()) {
-            log.warn("Список друзей пользователя id={} пуст", userId);
-            throw new NotFoundException("У пользователя с id " + userId + " нет друзей");
-        }
-
         List<User> friends = user.getFriends().stream()
                 .map(userStorage::findById)
                 .collect(Collectors.toList());
