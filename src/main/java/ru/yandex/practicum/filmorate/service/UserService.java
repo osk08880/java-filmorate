@@ -37,14 +37,10 @@ public class UserService {
         User friend = userStorage.findById(friendId);
         log.debug("Найдены пользователи: пользователь id={}, друг id={}", userId, friendId);
 
-        if (!user.getFriends().contains(friendId) || !friend.getFriends().contains(userId)) {
-            log.warn("Пользователь id={} не является другом пользователя id={}", friendId, userId);
-            throw new NotFoundException("Пользователь с id " + friendId + " не является другом");
-        }
-
         user.getFriends().remove(friendId);
         friend.getFriends().remove(userId);
-        log.info("Пользователь id={} удалил из друзей пользователя id={}", userId, friendId);
+
+        log.info("Дружба разорвана (или не существовала): пользователь id={}, друг id={}", userId, friendId);
     }
 
     public List<User> getCommonFriends(Long userId, Long otherUserId) {

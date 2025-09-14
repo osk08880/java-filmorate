@@ -132,14 +132,26 @@ class UserControllerIntegrationTest {
     }
 
     @Test
-    void shouldFailRemoveNotFriend() {
+    void shouldNotFailRemoveNotFriend() {
         User user1 = createValidUser();
         user1.setEmail("user1@example.com");
         User user2 = createValidUser();
         user2.setEmail("friend@example.com");
         user2.setLogin("friendLogin");
-        ResponseEntity<User> response1 = restTemplate.exchange("/users", HttpMethod.POST, new HttpEntity<>(user1), User.class);
-        ResponseEntity<User> response2 = restTemplate.exchange("/users", HttpMethod.POST, new HttpEntity<>(user2), User.class);
+
+        ResponseEntity<User> response1 = restTemplate.exchange(
+                "/users",
+                HttpMethod.POST,
+                new HttpEntity<>(user1),
+                User.class
+        );
+        ResponseEntity<User> response2 = restTemplate.exchange(
+                "/users",
+                HttpMethod.POST,
+                new HttpEntity<>(user2),
+                User.class
+        );
+
         Long userId = response1.getBody().getId();
         Long friendId = response2.getBody().getId();
 
@@ -149,7 +161,9 @@ class UserControllerIntegrationTest {
                 null,
                 String.class
         );
-        assertThat(removeFriendResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
-        assertThat(removeFriendResponse.getBody()).contains("Пользователь с id " + friendId + " не является другом");
+
+        assertThat(removeFriendResponse.getStatusCode()).isEqualTo(HttpStatus.OK);
+
+        assertThat(removeFriendResponse.getBody()).isNullOrEmpty();
     }
 }
