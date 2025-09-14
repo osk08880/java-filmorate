@@ -4,6 +4,7 @@ import jakarta.validation.Valid;
 import jakarta.validation.Validator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Film;
@@ -78,17 +79,19 @@ public class FilmController {
     }
 
     @PutMapping("/{id}/like/{userId}")
-    public void addLike(@PathVariable Long id, @PathVariable Long userId) {
+    public ResponseEntity<Void> addLike(@PathVariable Long id, @PathVariable Long userId) {
         log.debug("Получен запрос на добавление лайка: фильм id={}, пользователь id={}", id, userId);
         filmService.addLike(id, userId);
         log.info("Лайк успешно добавлен: фильм id={}, пользователь id={}", id, userId);
+        return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{id}/like/{userId}")
-    public void removeLike(@PathVariable Long id, @PathVariable Long userId) {
+    public ResponseEntity<Void> removeLike(@PathVariable Long id, @PathVariable Long userId) {
         log.debug("Получен запрос на удаление лайка: фильм id={}, пользователь id={}", id, userId);
         filmService.removeLike(id, userId);
         log.info("Лайк успешно удален: фильм id={}, пользователь id={}", id, userId);
+        return ResponseEntity.ok().build();
     }
 
     @GetMapping("/popular")
