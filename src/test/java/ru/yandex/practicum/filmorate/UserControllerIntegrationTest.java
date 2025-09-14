@@ -87,6 +87,7 @@ class UserControllerIntegrationTest {
     @Test
     void shouldAddAndRemoveFriend() {
         User user1 = createValidUser();
+        user1.setEmail("user1@example.com");
         User user2 = createValidUser();
         user2.setEmail("friend@example.com");
         user2.setLogin("friendLogin");
@@ -121,19 +122,20 @@ class UserControllerIntegrationTest {
         );
         assertThat(removeFriendResponse.getStatusCodeValue()).isEqualTo(200);
 
-        friendsResponse = restTemplate.exchange(
+        ResponseEntity<String> emptyFriendsResponse = restTemplate.exchange(
                 "/users/" + userId + "/friends",
                 HttpMethod.GET,
                 null,
-                new org.springframework.core.ParameterizedTypeReference<List<User>>() {}
+                String.class
         );
-        assertThat(friendsResponse.getStatusCodeValue()).isEqualTo(200);
-        assertThat(friendsResponse.getBody()).isEmpty();
+        assertThat(emptyFriendsResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(emptyFriendsResponse.getBody()).contains("У пользователя с id " + userId + " нет друзей");
     }
 
     @Test
     void shouldGetCommonFriends() {
         User user1 = createValidUser();
+        user1.setEmail("user1@example.com");
         User user2 = createValidUser();
         user2.setEmail("friend1@example.com");
         user2.setLogin("friend1Login");
@@ -175,5 +177,27 @@ class UserControllerIntegrationTest {
         );
         assertThat(friendResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
         assertThat(friendResponse.getBody()).contains("Пользователь с id 999 не найден");
+    }
+
+    @Test
+    void shouldFailRemoveNotFriend() {
+        User user1 = createValidUser();
+        user1.setEmail("user1@example.com");
+        User user2 = createValidUser();
+        user2.setEmail("friend@example.com");
+        user2.setLogin("friendLogin");
+        ResponseEntity<User> response1 = restTemplate.exchange("/users", HttpMethod.POST, new HttpEntity<>(user1), User.class);
+        ResponseEntity<User> response2 = restTemplate.exchange("/users", HttpMethod.POST, new HttpEntity<>(user2), User.class);
+        Long userId = response1.getBody().getId();
+        Long friendId = response2.getBody().getId();
+
+        ResponseEntity<String> removeFriendResponse = restTemplate.exchange(
+                "/users/" + userId + "/friends/" + friendId,
+                HttpMethod.DELETE,
+                null,
+                String.class
+        );
+        assertThat(removeFriendResponse.getStatusCode()).isEqualTo(HttpStatus.NOT_FOUND);
+        assertThat(removeFriendResponse.getBody()).contains("Пользователь с id " + friendId + " не является другом");
     }
 }
