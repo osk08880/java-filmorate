@@ -8,6 +8,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import ru.yandex.practicum.filmorate.controller.FilmController;
 import ru.yandex.practicum.filmorate.exception.ConditionsNotMetException;
+import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Film;
 
 import java.time.LocalDate;
@@ -49,24 +50,39 @@ class FilmTest {
         Set<ConstraintViolation<Film>> violations = validator.validate(film);
         assertThat(violations)
                 .anyMatch(v -> v.getMessage().contains("Название не может быть пустым"));
+        assertThrows(ValidationException.class, () -> filmController.create(film),
+                "Ожидается исключение ValidationException для пустого названия");
     }
 
     @Test
     void shouldFailWhenDescriptionTooLong() {
         Film film = getValidFilm();
-        film.setDescription("A".repeat(201)); // лимит 200 символов
+        film.setDescription("A".repeat(201));
         Set<ConstraintViolation<Film>> violations = validator.validate(film);
         assertThat(violations)
                 .anyMatch(v -> v.getMessage().contains("Описание не должно превышать 200 символов"));
+        assertThrows(ValidationException.class, () -> filmController.create(film),
+                "Ожидается исключение ValidationException для слишком длинного описания");
     }
 
     @Test
     void shouldFailWhenReleaseDateBeforeCinemaBirth() {
         Film film = getValidFilm();
-        film.setReleaseDate(LocalDate.of(1800, 1, 1)); // раньше 1895 года
-        // Проверка через контроллер, так как валидация даты не в Validator
+        film.setReleaseDate(LocalDate.of(1800, 1, 1));
+        Set<ConstraintViolation<Film>> violations = validator.validate(film);
+        assertThat(violations).isEmpty();
         assertThrows(ConditionsNotMetException.class, () -> filmController.create(film),
                 "Ожидается исключение ConditionsNotMetException для даты раньше 1895 года");
+    }
+
+    @Test
+    void shouldPassWhenReleaseDateIsNull() {
+        Film film = getValidFilm();
+        film.setReleaseDate(null);
+        Set<ConstraintViolation<Film>> violations = validator.validate(film);
+        assertThat(violations).isEmpty();
+        Film createdFilm = filmController.create(film);
+        assertThat(createdFilm).isNotNull();
     }
 
     @Test
@@ -76,6 +92,8 @@ class FilmTest {
         Set<ConstraintViolation<Film>> violations = validator.validate(film);
         assertThat(violations)
                 .anyMatch(v -> v.getMessage().contains("Продолжительность фильма должна быть положительным числом"));
+        assertThrows(ValidationException.class, () -> filmController.create(film),
+                "Ожидается исключение ValidationException для отрицательной продолжительности");
     }
 
     @Test
@@ -83,5 +101,7 @@ class FilmTest {
         Film film = getValidFilm();
         Set<ConstraintViolation<Film>> violations = validator.validate(film);
         assertThat(violations).isEmpty();
+        Film createdFilm = filmController.create(film);
+        assertThat(createdFilm).isNotNull();
     }
 }
