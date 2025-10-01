@@ -20,4 +20,23 @@ public class Film {
     @Positive(message = "Продолжительность фильма должна быть положительным числом")
     private int duration;
     private Set<Long> likes = new HashSet<>();
+    private Set<Genre> genres = new HashSet<>();
+    private MpaRating mpa;
+
+    public enum Genre {
+        КОМЕДИЯ,
+        ДРАМА,
+        МУЛЬТФИЛЬМ,
+        ТРИЛЛЕР,
+        ДОКУМЕНТАЛЬНЫЙ,
+        БОЕВИК
+    }
+
+    public enum MpaRating {
+        G,      // Нет возрастных ограничений
+        PG,     // Детям рекомендуется смотреть с родителями
+        PG_13,  // Детям до 13 лет просмотр нежелателен
+        R,      // Лицам до 17 лет просмотр только со взрослым
+        NC_17   // Лицам до 18 лет просмотр запрещён
+    }
 }
