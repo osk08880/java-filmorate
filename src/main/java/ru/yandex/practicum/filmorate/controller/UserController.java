@@ -5,11 +5,10 @@ import jakarta.validation.Validator;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
-import ru.yandex.practicum.filmorate.exception.ConditionsNotMetException;
-import ru.yandex.practicum.filmorate.exception.DuplicatedDataException;
-import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.User;
+import ru.yandex.practicum.filmorate.service.UserService;
+import ru.yandex.practicum.filmorate.storage.user.UserStorage;
 
 import java.util.*;
 
@@ -17,18 +16,19 @@ import java.util.*;
 @RequestMapping("/users")
 @Slf4j
 public class UserController {
-    private final Map<Long, User> users = new HashMap<>();
+    private final UserStorage userStorage;
+    private final UserService userService;
     private final Validator validator;
 
     @Autowired
-    public UserController(Validator validator) {
-        if (validator == null) {
-            throw new IllegalStateException("Validator не внедрён. Проверь конфигурацию контекста Spring.");
-        }
+    public UserController(UserStorage userStorage, UserService userService, Validator validator) {
+        this.userStorage = userStorage;
+        this.userService = userService;
         this.validator = validator;
     }
 
     private void validateEntity(User user) {
+        log.debug("Начало валидации пользователя: {}", user);
         var violations = validator.validate(user);
         if (!violations.isEmpty()) {
             StringBuilder errorMessage = new StringBuilder();
@@ -36,89 +36,74 @@ public class UserController {
                 String fieldName = violation.getPropertyPath().toString();
                 String errorMsg = violation.getMessage();
                 errorMessage.append(fieldName).append(": ").append(errorMsg).append("; ");
-                log.warn("Ошибка валидации в UserController: поле '{}' - {}", fieldName, errorMsg);
+                log.warn("Ошибка валидации: поле '{}' - {}", fieldName, errorMsg);
             });
             throw new ValidationException(errorMessage.toString());
         }
+        log.debug("Валидация пользователя успешно пройдена: {}", user);
     }
 
     @PostMapping
     public User create(@Valid @RequestBody User user) {
-        try {
-            validateEntity(user);
-
-            if (users.values().stream()
-                    .anyMatch(u -> u.getEmail().equalsIgnoreCase(user.getEmail()))) {
-                log.warn("Ошибка создания пользователя: email {} уже используется", user.getEmail());
-                throw new DuplicatedDataException("Этот имейл уже используется");
-            }
-            if (user.getName() == null || user.getName().isBlank()) {
-                log.info("Имя пользователя не указано, используется login: {}", user.getLogin());
-                user.setName(user.getLogin());
-            }
-            user.setId(getNextId());
-            users.put(user.getId(), user);
-
-            log.info("Пользователь успешно создан: id={}, email={}, login={}",
-                    user.getId(), user.getEmail(), user.getLogin());
-            return user;
-        } catch (ValidationException e) {
-            throw e;
-        }
+        log.debug("Получен запрос на создание пользователя: {}", user);
+        validateEntity(user);
+        User createdUser = userStorage.create(user);
+        log.info("Пользователь успешно создан: id={}", createdUser.getId());
+        return createdUser;
     }
 
     @PutMapping
-    public User update(@Valid @RequestBody User newUser) {
-        try {
-            validateEntity(newUser);
-
-            if (newUser.getId() == null) {
-                log.warn("Ошибка обновления пользователя: не указан id");
-                throw new ConditionsNotMetException("Id должен быть указан");
-            }
-            if (!users.containsKey(newUser.getId())) {
-                log.warn("Ошибка обновления пользователя: пользователь с id={} не найден", newUser.getId());
-                throw new NotFoundException("Пользователь с id " + newUser.getId() + " не найден");
-            }
-
-            User oldUser = users.get(newUser.getId());
-            if (newUser.getEmail() != null && !newUser.getEmail().equalsIgnoreCase(oldUser.getEmail())) {
-                if (users.values().stream()
-                        .anyMatch(u -> u.getEmail().equalsIgnoreCase(newUser.getEmail()))) {
-                    log.warn("Ошибка обновления пользователя: email {} уже используется", newUser.getEmail());
-                    throw new DuplicatedDataException("Этот имейл уже используется");
-                }
-                oldUser.setEmail(newUser.getEmail());
-            }
-            if (newUser.getName() == null || newUser.getName().isBlank()) {
-                log.info("Имя пользователя не указано, используется login: {}", newUser.getLogin());
-                oldUser.setName(newUser.getLogin());
-            } else {
-                oldUser.setName(newUser.getName());
-            }
-
-            oldUser.setLogin(newUser.getLogin());
-            oldUser.setBirthday(newUser.getBirthday());
-
-            log.info("Пользователь успешно обновлен: id={}, email={}, login={}",
-                    oldUser.getId(), oldUser.getEmail(), oldUser.getLogin());
-            return oldUser;
-        } catch (ValidationException e) {
-            throw e;
-        }
+    public User update(@Valid @RequestBody User user) {
+        log.debug("Получен запрос на обновление пользователя: {}", user);
+        validateEntity(user);
+        User updatedUser = userStorage.update(user);
+        log.info("Пользователь успешно обновлен: id={}", updatedUser.getId());
+        return updatedUser;
     }
 
     @GetMapping
     public Collection<User> findAll() {
-        return Collections.unmodifiableCollection(new ArrayList<>(users.values()));
+        log.debug("Получен запрос на получение всех пользователей");
+        Collection<User> users = userStorage.findAll();
+        log.info("Возвращено {} пользователей", users.size());
+        return users;
     }
 
-    private synchronized long getNextId() {
-        long currentMaxId = users.keySet()
-                .stream()
-                .mapToLong(id -> id)
-                .max()
-                .orElse(0);
-        return ++currentMaxId;
+    @GetMapping("/{id}")
+    public User findById(@PathVariable Long id) {
+        log.debug("Получен запрос на получение пользователя с id={}", id);
+        User user = userStorage.findById(id);
+        log.info("Пользователь успешно найден: id={}", id);
+        return user;
+    }
+
+    @PutMapping("/{id}/friends/{friendId}")
+    public void addFriend(@PathVariable Long id, @PathVariable Long friendId) {
+        log.debug("Получен запрос на добавление друга: пользователь id={}, друг id={}", id, friendId);
+        userService.addFriend(id, friendId);
+        log.info("Друг успешно добавлен: пользователь id={}, друг id={}", id, friendId);
+    }
+
+    @DeleteMapping("/{id}/friends/{friendId}")
+    public void removeFriend(@PathVariable Long id, @PathVariable Long friendId) {
+        log.debug("Получен запрос на удаление друга: пользователь id={}, друг id={}", id, friendId);
+        userService.removeFriend(id, friendId);
+        log.info("Друг успешно удален: пользователь id={}, друг id={}", id, friendId);
+    }
+
+    @GetMapping("/{id}/friends")
+    public List<User> getFriends(@PathVariable Long id) {
+        log.debug("Получен запрос на получение списка друзей пользователя id={}", id);
+        List<User> friends = userService.getFriends(id);
+        log.info("Возвращен список друзей для пользователя id={}: {} друзей", id, friends.size());
+        return friends;
+    }
+
+    @GetMapping("/{id}/friends/common/{otherId}")
+    public List<User> getCommonFriends(@PathVariable Long id, @PathVariable Long otherId) {
+        log.debug("Получен запрос на получение общих друзей: пользователь id={}, другой пользователь id={}", id, otherId);
+        List<User> commonFriends = userService.getCommonFriends(id, otherId);
+        log.info("Возвращен список общих друзей для пользователей id={} и id={}: {} друзей", id, otherId, commonFriends.size());
+        return commonFriends;
     }
 }
