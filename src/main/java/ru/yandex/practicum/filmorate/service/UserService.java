@@ -21,54 +21,91 @@ public class UserService {
 
     public void addFriend(Long userId, Long friendId) {
         log.debug("Добавление друга: пользователь id={}, друг id={}", userId, friendId);
-        User user = userStorage.findById(userId);
-        User friend = userStorage.findById(friendId);
-        log.debug("Найдены пользователи: пользователь id={}, друг id={}", userId, friendId);
+        User user = getUserOrThrow(userId);
+        User friend = getUserOrThrow(friendId);
 
-        user.getFriends().add(friendId);
-        friend.getFriends().add(userId);
-        log.info("Пользователь id={} добавил в друзья пользователя id={}", userId, friendId);
+        if (user.getFriends().containsKey(friendId)) {
+            log.warn("Дружба между пользователями id={} и id={} уже существует", userId, friendId);
+            throw new IllegalStateException("Пользователи уже являются друзьями");
+        }
+
+        user.getFriends().put(friendId, User.FriendshipStatus.НЕПОДТВЕРЖДЁННАЯ);
+        friend.getFriends().put(userId, User.FriendshipStatus.НЕПОДТВЕРЖДЁННАЯ);
+        log.info("Пользователь id={} отправил запрос на дружбу пользователю id={}", userId, friendId);
+    }
+
+    public void confirmFriend(Long userId, Long friendId) {
+        log.debug("Подтверждение дружбы: пользователь id={}, друг id={}", userId, friendId);
+        User user = getUserOrThrow(userId);
+        User friend = getUserOrThrow(friendId);
+
+        if (!user.getFriends().containsKey(friendId) || !friend.getFriends().containsKey(userId)) {
+            log.warn("Запрос на дружбу между id={} и id={} не найден", userId, friendId);
+            throw new IllegalStateException("Запрос на дружбу не существует");
+        }
+
+        user.getFriends().put(friendId, User.FriendshipStatus.ПОДТВЕРЖДЁННАЯ);
+        friend.getFriends().put(userId, User.FriendshipStatus.ПОДТВЕРЖДЁННАЯ);
+        log.info("Дружба между пользователями id={} и id={} подтверждена", userId, friendId);
     }
 
     public void removeFriend(Long userId, Long friendId) {
         log.debug("Удаление друга: пользователь id={}, друг id={}", userId, friendId);
-        User user = userStorage.findById(userId);
-        User friend = userStorage.findById(friendId);
-        log.debug("Найдены пользователи: пользователь id={}, друг id={}", userId, friendId);
+        User user = getUserOrThrow(userId);
+        User friend = getUserOrThrow(friendId);
+
+        if (!user.getFriends().containsKey(friendId) || !friend.getFriends().containsKey(userId)) {
+            log.warn("Дружба между id={} и id={} не существует", userId, friendId);
+            return;
+        }
 
         user.getFriends().remove(friendId);
         friend.getFriends().remove(userId);
-
-        log.info("Дружба разорвана (или не существовала): пользователь id={}, друг id={}", userId, friendId);
+        log.info("Дружба между пользователями id={} и id={} разорвана", userId, friendId);
     }
 
     public List<User> getCommonFriends(Long userId, Long otherUserId) {
         log.debug("Получение общих друзей: пользователь id={}, другой пользователь id={}", userId, otherUserId);
-        User user = userStorage.findById(userId);
-        User otherUser = userStorage.findById(otherUserId);
-        log.debug("Найдены пользователи: пользователь id={}, другой пользователь id={}", userId, otherUserId);
+        User user = getUserOrThrow(userId);
+        User otherUser = getUserOrThrow(otherUserId);
 
-        Set<Long> commonFriendIds = new HashSet<>(user.getFriends());
-        commonFriendIds.retainAll(otherUser.getFriends());
+        Set<Long> commonFriendIds = new HashSet<>(user.getFriends().keySet());
+        commonFriendIds.retainAll(otherUser.getFriends().keySet());
         log.debug("Найдены общие друзья: {}", commonFriendIds);
 
         List<User> commonFriends = commonFriendIds.stream()
-                .map(userStorage::findById)
+                .map(this::getUserOrThrow)
                 .collect(Collectors.toList());
-        log.info("Возвращен список общих друзей для пользователей id={} и id={}: {} друзей",
+        log.info("Возвращён список общих друзей для пользователей id={} и id={}: {} друзей",
                 userId, otherUserId, commonFriends.size());
         return commonFriends;
     }
 
     public List<User> getFriends(Long userId) {
         log.debug("Получение списка друзей пользователя id={}", userId);
-        User user = userStorage.findById(userId);
-        log.debug("Найден пользователь id={}", userId);
+        User user = getUserOrThrow(userId);
 
-        List<User> friends = user.getFriends().stream()
-                .map(userStorage::findById)
+        List<User> friends = user.getFriends().entrySet().stream()
+                .filter(entry -> entry.getValue() == User.FriendshipStatus.ПОДТВЕРЖДЁННАЯ)
+                .map(Map.Entry::getKey)
+                .map(this::getUserOrThrow)
                 .collect(Collectors.toList());
-        log.info("Возвращен список друзей для пользователя id={}: {} друзей", userId, friends.size());
+        log.info("Возвращён список друзей для пользователя id={}: {} друзей", userId, friends.size());
         return friends;
+    }
+
+    private User getUserOrThrow(Long userId) {
+        User user = userStorage.findById(userId);
+        if (user == null) {
+            log.error("Пользователь с id={} не найден", userId);
+            throw new NotFoundException("Пользователь с id=" + userId + " не найден");
+        }
+        return user;
+    }
+}
+
+class NotFoundException extends RuntimeException {
+    public NotFoundException(String message) {
+        super(message);
     }
 }
