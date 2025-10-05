@@ -16,6 +16,7 @@ import java.sql.Date;
 import java.sql.PreparedStatement;
 import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component("db")
 @Profile("!test")
@@ -66,7 +67,6 @@ public class UserDbStorage implements UserStorage {
                 newUser.getName() != null && !newUser.getName().isBlank() ? newUser.getName() : newUser.getLogin(),
                 Date.valueOf(newUser.getBirthday()),
                 newUser.getId());
-        // Обновляем друзей
         jdbcTemplate.update("DELETE FROM friendships WHERE user_id = ?", newUser.getId());
         saveFriends(newUser.getId(), newUser.getFriends());
         log.info("Пользователь успешно обновлен в БД: id={}", newUser.getId());
@@ -78,7 +78,7 @@ public class UserDbStorage implements UserStorage {
         log.debug("Получение всех пользователей из БД");
         String sql = "SELECT u.id, u.email, u.login, u.name, u.birthday FROM users u";
         List<User> users = jdbcTemplate.query(sql, userRowMapper());
-        users.forEach(this::loadFriends);
+        loadAllFriends(users);
         log.info("Возвращено {} пользователей из БД", users.size());
         return users;
     }
@@ -119,7 +119,7 @@ public class UserDbStorage implements UserStorage {
         Object[] params;
         if (excludeId != null) {
             sql += " AND id != ?";
-            params = new Object[]{email, excludeId};  // Фикс: 2 параметра
+            params = new Object[]{email, excludeId};
         } else {
             params = new Object[]{email};
         }
@@ -133,10 +133,21 @@ public class UserDbStorage implements UserStorage {
         if (friends == null || friends.isEmpty()) {
             return;
         }
-        String sql = "INSERT INTO friendships (user_id, friend_id, status) VALUES (?, ?, ?)";
+
+        List<Object[]> batchArgs = new ArrayList<>();
         for (Map.Entry<Long, User.FriendshipStatus> entry : friends.entrySet()) {
-            jdbcTemplate.update(sql, userId, entry.getKey(), entry.getValue().name());
+            if (entry.getValue() != null) {
+                batchArgs.add(new Object[]{userId, entry.getKey(), entry.getValue().name()});
+            }
         }
+
+        if (batchArgs.isEmpty()) {
+            return;
+        }
+
+        String sql = "INSERT INTO friendships (user_id, friend_id, status) VALUES (?, ?, ?)";
+        int[] updateCounts = jdbcTemplate.batchUpdate(sql, batchArgs);
+        log.debug("Сохранено {} записей дружбы для пользователя id={}", updateCounts.length, userId);
     }
 
     private void loadFriends(User user) {
@@ -146,10 +157,53 @@ public class UserDbStorage implements UserStorage {
         for (Map<String, Object> row : rows) {
             Long friendId = (Long) row.get("friend_id");
             String statusStr = (String) row.get("status");
-            User.FriendshipStatus status = User.FriendshipStatus.valueOf(statusStr);
+            User.FriendshipStatus status = parseFriendshipStatus(statusStr);
             friends.put(friendId, status);
         }
         user.setFriends(friends);
+    }
+
+    private void loadAllFriends(List<User> users) {
+        if (users.isEmpty()) return;
+
+        String sql = "SELECT user_id, friend_id, status FROM friendships";
+        List<Map<String, Object>> allRows = jdbcTemplate.queryForList(sql);
+
+        Map<Long, Map<Long, User.FriendshipStatus>> allFriends = allRows.stream()
+                .collect(Collectors.groupingBy(
+                        row -> (Long) row.get("user_id"),
+                        Collectors.toMap(
+                                row -> (Long) row.get("friend_id"),
+                                row -> parseFriendshipStatus((String) row.get("status"))
+                        )
+                ));
+
+        for (User user : users) {
+            Map<Long, User.FriendshipStatus> userFriends = allFriends.getOrDefault(user.getId(), new HashMap<>());
+            user.setFriends(userFriends);
+        }
+
+        log.debug("Загружено друзей для {} пользователей из БД", users.size());
+    }
+
+    private User.FriendshipStatus parseFriendshipStatus(String statusStr) {
+        if (statusStr == null) {
+            return null;
+        }
+        statusStr = statusStr.trim().toUpperCase();
+        switch (statusStr) {
+            case "НЕПОДТВЕРЖДЁННАЯ":
+                return User.FriendshipStatus.UNCONFIRMED;
+            case "ПОДТВЕРЖДЁННАЯ":
+                return User.FriendshipStatus.CONFIRMED;
+            default:
+                try {
+                    return User.FriendshipStatus.valueOf(statusStr);
+                } catch (IllegalArgumentException e) {
+                    log.error("Неизвестный статус дружбы из БД: {}", statusStr);
+                    throw new IllegalArgumentException("Неизвестный статус дружбы: " + statusStr);
+                }
+        }
     }
 
     private RowMapper<User> userRowMapper() {
