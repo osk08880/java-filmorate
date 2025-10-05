@@ -31,7 +31,7 @@ public class UserService {
             throw new IllegalStateException("Пользователи уже являются друзьями");
         }
 
-        user.getFriends().put(friendId, User.FriendshipStatus.НЕПОДТВЕРЖДЁННАЯ);
+        user.getFriends().put(friendId, User.FriendshipStatus.UNCONFIRMED);
         userStorage.update(user);
         log.info("Пользователь id={} отправил запрос на дружбу пользователю id={}", userId, friendId);
     }
@@ -41,13 +41,13 @@ public class UserService {
         User user = getUserOrThrow(userId);
         User friend = getUserOrThrow(friendId);
 
-        if (!user.getFriends().containsKey(friendId) || user.getFriends().get(friendId) != User.FriendshipStatus.НЕПОДТВЕРЖДЁННАЯ) {
+        if (!user.getFriends().containsKey(friendId) || user.getFriends().get(friendId) != User.FriendshipStatus.UNCONFIRMED) {
             log.warn("Запрос на дружбу между id={} и id={} не найден", userId, friendId);
             throw new IllegalStateException("Запрос на дружбу не существует");
         }
 
-        user.getFriends().put(friendId, User.FriendshipStatus.ПОДТВЕРЖДЁННАЯ);
-        friend.getFriends().put(userId, User.FriendshipStatus.ПОДТВЕРЖДЁННАЯ);
+        user.getFriends().put(friendId, User.FriendshipStatus.CONFIRMED);
+        friend.getFriends().put(userId, User.FriendshipStatus.CONFIRMED);
         userStorage.update(user);
         userStorage.update(friend);
         log.info("Дружба между пользователями id={} и id={} подтверждена", userId, friendId);

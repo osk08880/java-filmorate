@@ -25,7 +25,16 @@ public class User {
     private Map<Long, FriendshipStatus> friends = new HashMap<>();
 
     public enum FriendshipStatus {
-        НЕПОДТВЕРЖДЁННАЯ,
-        ПОДТВЕРЖДЁННАЯ
+        UNCONFIRMED("НЕПОДТВЕРЖДЁННАЯ"),
+        CONFIRMED("ПОДТВЕРЖДЁННАЯ");
+
+        private final String value;
+
+        FriendshipStatus(String value) {
+            this.value = value;
+        }
+        public String getValue() {
+            return value;
+        }
     }
 }
