@@ -6,26 +6,39 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.exception.ValidationException;
 import ru.yandex.practicum.filmorate.model.Film;
 import ru.yandex.practicum.filmorate.service.FilmService;
 import ru.yandex.practicum.filmorate.storage.film.FilmStorage;
+import ru.yandex.practicum.filmorate.storage.genre.GenreDao;
+import ru.yandex.practicum.filmorate.storage.mpa.MpaDao;
 
-import java.util.*;
+import java.util.Collection;
+import java.util.List;
 
 @RestController
 @RequestMapping("/films")
 @Slf4j
 public class FilmController {
+
     private final FilmStorage filmStorage;
     private final FilmService filmService;
     private final Validator validator;
+    private final MpaDao mpaDao;
+    private final GenreDao genreDao;
 
     @Autowired
-    public FilmController(FilmStorage filmStorage, FilmService filmService, Validator validator) {
+    public FilmController(FilmStorage filmStorage,
+                          FilmService filmService,
+                          Validator validator,
+                          MpaDao mpaDao,
+                          GenreDao genreDao) {
         this.filmStorage = filmStorage;
         this.filmService = filmService;
         this.validator = validator;
+        this.mpaDao = mpaDao;
+        this.genreDao = genreDao;
     }
 
     private void validateEntity(Film film) {
@@ -41,64 +54,75 @@ public class FilmController {
             });
             throw new ValidationException(errorMessage.toString());
         }
+
+        validateMPA(film);
+        validateGenres(film);
         log.debug("Валидация фильма успешно пройдена: {}", film);
+    }
+
+    private void validateMPA(Film film) {
+        if (film.getMpa() == null || !mpaDao.existsById(film.getMpa().getId())) {
+            throw new NotFoundException("MPA с id " + (film.getMpa() != null ? film.getMpa().getId() : null) + " не найден");
+        }
+    }
+
+    private void validateGenres(Film film) {
+        if (film.getGenres() != null) {
+            for (var genre : film.getGenres()) {
+                if (!genreDao.existsById(genre.getId())) {
+                    throw new NotFoundException("Жанр с id " + genre.getId() + " не найден");
+                }
+            }
+        }
     }
 
     @PostMapping
     public Film create(@Valid @RequestBody Film film) {
-        log.debug("Получен запрос на создание фильма: {}", film);
+        log.debug("Создание фильма: {}", film);
         validateEntity(film);
-        Film createdFilm = filmStorage.create(film);
-        log.info("Фильм успешно создан: id={}", createdFilm.getId());
-        return createdFilm;
+        return filmStorage.create(film);
     }
 
     @PutMapping
     public Film update(@Valid @RequestBody Film film) {
-        log.debug("Получен запрос на обновление фильма: {}", film);
+        log.debug("Обновление фильма: {}", film);
         validateEntity(film);
-        Film updatedFilm = filmStorage.update(film);
-        log.info("Фильм успешно обновлен: id={}", updatedFilm.getId());
-        return updatedFilm;
+        return filmStorage.update(film);
     }
 
     @GetMapping
     public Collection<Film> findAll() {
-        log.debug("Получен запрос на получение всех фильмов");
-        Collection<Film> films = filmStorage.findAll();
-        log.info("Возвращено {} фильмов", films.size());
-        return films;
+        log.debug("Получение всех фильмов");
+        return filmStorage.findAll();
     }
 
     @GetMapping("/{id}")
     public Film findById(@PathVariable Long id) {
-        log.debug("Получен запрос на получение фильма с id={}", id);
-        Film film = filmStorage.findById(id);
-        log.info("Фильм успешно найден: id={}", id);
-        return film;
+        log.debug("Получение фильма по id={}", id);
+        return filmStorage.findById(id);
     }
 
     @PutMapping("/{id}/like/{userId}")
     public ResponseEntity<Void> addLike(@PathVariable Long id, @PathVariable Long userId) {
-        log.debug("Получен запрос на добавление лайка: фильм id={}, пользователь id={}", id, userId);
+        log.debug("Добавление лайка: фильм id={}, пользователь id={}", id, userId);
+        if (id <= 0) throw new NotFoundException("Фильм с таким id не найден");
+        if (userId <= 0) throw new NotFoundException("Пользователь с таким id не найден");
         filmService.addLike(id, userId);
-        log.info("Лайк успешно добавлен: фильм id={}, пользователь id={}", id, userId);
         return ResponseEntity.ok().build();
     }
 
     @DeleteMapping("/{id}/like/{userId}")
     public ResponseEntity<Void> removeLike(@PathVariable Long id, @PathVariable Long userId) {
-        log.debug("Получен запрос на удаление лайка: фильм id={}, пользователь id={}", id, userId);
+        log.debug("Удаление лайка: фильм id={}, пользователь id={}", id, userId);
+        if (id <= 0) throw new NotFoundException("Фильм с таким id не найден");
+        if (userId <= 0) throw new NotFoundException("Пользователь с таким id не найден");
         filmService.removeLike(id, userId);
-        log.info("Лайк успешно удален: фильм id={}, пользователь id={}", id, userId);
         return ResponseEntity.ok().build();
     }
 
     @GetMapping("/popular")
     public List<Film> getTopFilms(@RequestParam(defaultValue = "10") int count) {
-        log.debug("Получен запрос на получение топ-{} фильмов", count);
-        List<Film> topFilms = filmService.getTopFilms(count);
-        log.info("Возвращен список топ-{} фильмов: {} фильмов", count, topFilms.size());
-        return topFilms;
+        log.debug("Получение топ-{} фильмов", count);
+        return filmService.getTopFilms(count);
     }
 }

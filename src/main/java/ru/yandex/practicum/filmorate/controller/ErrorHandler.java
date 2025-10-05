@@ -43,7 +43,7 @@ public class ErrorHandler {
     @ResponseBody
     public Map<String, String> handleNotFoundException(NotFoundException e) {
         log.error("Объект не найден: {}", e.getMessage());
-        return Map.of("error", "Not found", "message", e.getMessage());
+        return Map.of("error", "Not found", "message", e.getMessage());  // Фикс: "Not found" for 404
     }
 
     @ExceptionHandler
