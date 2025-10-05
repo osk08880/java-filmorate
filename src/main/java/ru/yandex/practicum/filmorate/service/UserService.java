@@ -2,6 +2,8 @@ package ru.yandex.practicum.filmorate.service;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Service;
 import ru.yandex.practicum.filmorate.model.User;
 import ru.yandex.practicum.filmorate.storage.user.UserStorage;
@@ -11,12 +13,13 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
+@Profile("!test")
 @Slf4j
 public class UserService {
     private final UserStorage userStorage;
 
     @Autowired
-    public UserService(UserStorage userStorage) {
+    public UserService(@Qualifier("db") UserStorage userStorage) {
         this.userStorage = userStorage;
     }
 
@@ -31,7 +34,7 @@ public class UserService {
         }
 
         user.getFriends().put(friendId, User.FriendshipStatus.НЕПОДТВЕРЖДЁННАЯ);
-        friend.getFriends().put(userId, User.FriendshipStatus.НЕПОДТВЕРЖДЁННАЯ);
+        userStorage.update(user);
         log.info("Пользователь id={} отправил запрос на дружбу пользователю id={}", userId, friendId);
     }
 
@@ -40,13 +43,15 @@ public class UserService {
         User user = getUserOrThrow(userId);
         User friend = getUserOrThrow(friendId);
 
-        if (!user.getFriends().containsKey(friendId) || !friend.getFriends().containsKey(userId)) {
+        if (!user.getFriends().containsKey(friendId) || user.getFriends().get(friendId) != User.FriendshipStatus.НЕПОДТВЕРЖДЁННАЯ) {
             log.warn("Запрос на дружбу между id={} и id={} не найден", userId, friendId);
             throw new IllegalStateException("Запрос на дружбу не существует");
         }
 
         user.getFriends().put(friendId, User.FriendshipStatus.ПОДТВЕРЖДЁННАЯ);
         friend.getFriends().put(userId, User.FriendshipStatus.ПОДТВЕРЖДЁННАЯ);
+        userStorage.update(user);
+        userStorage.update(friend);
         log.info("Дружба между пользователями id={} и id={} подтверждена", userId, friendId);
     }
 
@@ -55,13 +60,17 @@ public class UserService {
         User user = getUserOrThrow(userId);
         User friend = getUserOrThrow(friendId);
 
-        if (!user.getFriends().containsKey(friendId) || !friend.getFriends().containsKey(userId)) {
+        if (!user.getFriends().containsKey(friendId)) {
             log.warn("Дружба между id={} и id={} не существует", userId, friendId);
             return;
         }
 
         user.getFriends().remove(friendId);
-        friend.getFriends().remove(userId);
+        if (friend.getFriends().containsKey(userId)) {
+            friend.getFriends().remove(userId);
+        }
+        userStorage.update(user);
+        userStorage.update(friend);
         log.info("Дружба между пользователями id={} и id={} разорвана", userId, friendId);
     }
 
@@ -87,7 +96,6 @@ public class UserService {
         User user = getUserOrThrow(userId);
 
         List<User> friends = user.getFriends().entrySet().stream()
-                .filter(entry -> entry.getValue() == User.FriendshipStatus.ПОДТВЕРЖДЁННАЯ)
                 .map(Map.Entry::getKey)
                 .map(this::getUserOrThrow)
                 .collect(Collectors.toList());
@@ -96,11 +104,11 @@ public class UserService {
     }
 
     private User getUserOrThrow(Long userId) {
-        User user = userStorage.findById(userId);
-        if (user == null) {
+        try {
+            return userStorage.findById(userId);
+        } catch (NotFoundException e) {
             log.error("Пользователь с id={} не найден", userId);
-            throw new NotFoundException("Пользователь с id=" + userId + " не найден");
+            throw e;
         }
-        return user;
     }
 }
