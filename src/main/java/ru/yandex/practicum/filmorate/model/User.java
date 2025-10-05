@@ -25,7 +25,7 @@ public class User {
     private Map<Long, FriendshipStatus> friends = new HashMap<>();
 
     public enum FriendshipStatus {
-        НЕПОДТВЕРЖДЁННАЯ,  // Запрос на дружбу отправлен, но не подтверждён
-        ПОДТВЕРЖДЁННАЯ     // Дружба подтверждена
+        НЕПОДТВЕРЖДЁННАЯ,
+        ПОДТВЕРЖДЁННАЯ
     }
 }
