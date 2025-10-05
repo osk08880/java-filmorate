@@ -27,7 +27,6 @@ class UserDbStorageTest {
 
     @Test
     void createUser_ShouldReturnCreatedUserWithIdAndCorrectFields() {
-        // given
         User user = new User();
         user.setEmail("test@example.com");
         user.setLogin("testlogin");
@@ -35,10 +34,8 @@ class UserDbStorageTest {
         user.setBirthday(LocalDate.of(1990, 1, 1));
         user.setFriends(Map.of());
 
-        // when
         User created = userStorage.create(user);
 
-        // then
         assertThat(created).isNotNull();
         assertThat(created.getId()).isPositive();
         assertThat(created.getEmail()).isEqualTo("test@example.com");
@@ -64,7 +61,7 @@ class UserDbStorageTest {
         updatedUser.setLogin("newlogin");
         updatedUser.setName("New Name");
         updatedUser.setBirthday(LocalDate.of(1990, 1, 1));
-        updatedUser.setFriends(Map.of(createdFriend.getId(), User.FriendshipStatus.НЕПОДТВЕРЖДЁННАЯ));
+        updatedUser.setFriends(Map.of(createdFriend.getId(), User.FriendshipStatus.UNCONFIRMED));
 
         User updated = userStorage.update(updatedUser);
 
