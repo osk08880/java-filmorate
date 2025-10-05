@@ -2,6 +2,7 @@ package ru.yandex.practicum.filmorate.storage.film;
 
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Profile;
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.support.GeneratedKeyHolder;
@@ -15,8 +16,8 @@ import ru.yandex.practicum.filmorate.model.Mpa;
 
 import java.sql.Date;
 import java.sql.PreparedStatement;
-import java.time.LocalDate;
 import java.util.*;
+import java.util.stream.Collectors;
 
 @Component("filmDb")
 @Profile("!test")
@@ -31,7 +32,6 @@ public class FilmDbStorage implements FilmStorage {
     @Override
     public Film create(Film film) {
         log.debug("Создание фильма в БД: {}", film);
-        validateFilm(film);
 
         String sql = "INSERT INTO films (name, description, release_date, duration, mpa_rating_id) VALUES (?, ?, ?, ?, ?)";
         KeyHolder keyHolder = new GeneratedKeyHolder();
@@ -110,13 +110,6 @@ public class FilmDbStorage implements FilmStorage {
         throw new NotFoundException("Фильм с id " + id + " не найден");
     }
 
-    private void validateFilm(Film film) {
-        LocalDate minReleaseDate = LocalDate.of(1895, 12, 28);
-        if (film.getReleaseDate().isBefore(minReleaseDate)) {
-            throw new ConditionsNotMetException("Дата релиза не может быть раньше 28 декабря 1895 года");
-        }
-    }
-
     private Long getMpaId(Mpa mpa) {
         if (mpa == null) return 1L;
 
@@ -145,33 +138,62 @@ public class FilmDbStorage implements FilmStorage {
     private void saveGenres(Long filmId, Set<Genre> genres) {
         if (genres == null || genres.isEmpty()) return;
 
-        String sql = "INSERT INTO film_genres (film_id, genre_id) VALUES (?, ?)";
+        List<Genre> invalidGenres = new ArrayList<>();
+
+        Set<Long> candidateIds = genres.stream()
+                .filter(g -> g.getId() != null)
+                .map(Genre::getId)
+                .collect(Collectors.toSet());
+
+        Set<String> candidateNames = genres.stream()
+                .filter(g -> g.getName() != null && g.getId() == null)
+                .map(Genre::getName)
+                .collect(Collectors.toSet());
+
+        Map<Long, Long> validIdsById = new HashMap<>();
+        if (!candidateIds.isEmpty()) {
+            String idSql = "SELECT id FROM genres WHERE id IN (" + String.join(",", Collections.nCopies(candidateIds.size(), "?")) + ")";
+            try {
+                List<Long> validIds = jdbcTemplate.queryForList(idSql, Long.class, candidateIds.toArray());
+                validIds.forEach(id -> validIdsById.put(id, id));
+            } catch (EmptyResultDataAccessException ignored) {
+            }
+        }
+
+        Map<String, Long> validIdsByName = new HashMap<>();
+        if (!candidateNames.isEmpty()) {
+            String nameSql = "SELECT id, name FROM genres WHERE name IN (" + String.join(",", Collections.nCopies(candidateNames.size(), "?")) + ")";
+            List<Map<String, Object>> rows = jdbcTemplate.queryForList(nameSql, candidateNames.toArray());
+            rows.forEach(row -> {
+                Long id = (Long) row.get("id");
+                String name = (String) row.get("name");
+                validIdsByName.put(name, id);
+            });
+        }
+
+        List<Object[]> batchArgs = new ArrayList<>();
         for (Genre genre : genres) {
             Long genreId = null;
-
-            if (genre.getId() != null) {
-                List<Long> ids = jdbcTemplate.queryForList(
-                        "SELECT id FROM genres WHERE id = ?",
-                        Long.class,
-                        genre.getId()
-                );
-                if (!ids.isEmpty()) genreId = ids.get(0);
+            if (genre.getId() != null && validIdsById.containsKey(genre.getId())) {
+                genreId = genre.getId();
+            } else if (genre.getName() != null && validIdsByName.containsKey(genre.getName())) {
+                genreId = validIdsByName.get(genre.getName());
             }
-
-            if (genreId == null && genre.getName() != null) {
-                List<Long> ids = jdbcTemplate.queryForList(
-                        "SELECT id FROM genres WHERE name = ?",
-                        Long.class,
-                        genre.getName()
-                );
-                if (!ids.isEmpty()) genreId = ids.get(0);
-            }
-
             if (genreId != null) {
-                jdbcTemplate.update(sql, filmId, genreId);
+                batchArgs.add(new Object[]{filmId, genreId});
             } else {
-                log.warn("Жанр '{}' не найден в БД, пропускаем", genre);
+                invalidGenres.add(genre);
             }
+        }
+
+        if (!batchArgs.isEmpty()) {
+            String sql = "INSERT INTO film_genres (film_id, genre_id) VALUES (?, ?)";
+            int[] updateCounts = jdbcTemplate.batchUpdate(sql, batchArgs);
+            log.debug("Сохранено {} жанров для фильма id={}", updateCounts.length, filmId);
+        }
+
+        if (!invalidGenres.isEmpty()) {
+            log.warn("Жанры не найдены в БД и пропущены для фильма id={}: {}", filmId, invalidGenres);
         }
     }
 
