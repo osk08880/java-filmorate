@@ -1,15 +1,18 @@
 package ru.yandex.practicum.filmorate.storage.user;
 
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 import ru.yandex.practicum.filmorate.exception.ConditionsNotMetException;
 import ru.yandex.practicum.filmorate.exception.DuplicatedDataException;
 import ru.yandex.practicum.filmorate.exception.NotFoundException;
 import ru.yandex.practicum.filmorate.model.User;
 
+import java.time.LocalDate;
 import java.util.*;
 
 @Component
+@Profile("test")
 @Slf4j
 public class InMemoryUserStorage implements UserStorage {
     private final Map<Long, User> users = new HashMap<>();
@@ -17,6 +20,7 @@ public class InMemoryUserStorage implements UserStorage {
     @Override
     public User create(User user) {
         log.debug("Создание пользователя: {}", user);
+        validateUser(user);
         if (users.values().stream()
                 .anyMatch(u -> u.getEmail().equalsIgnoreCase(user.getEmail()))) {
             log.warn("Email {} уже используется", user.getEmail());
@@ -25,6 +29,9 @@ public class InMemoryUserStorage implements UserStorage {
         if (user.getName() == null || user.getName().isBlank()) {
             log.debug("Имя пользователя не указано, используется login: {}", user.getLogin());
             user.setName(user.getLogin());
+        }
+        if (user.getFriends() == null) {
+            user.setFriends(new HashMap<>());
         }
         user.setId(getNextId());
         users.put(user.getId(), user);
@@ -43,6 +50,7 @@ public class InMemoryUserStorage implements UserStorage {
             log.warn("Пользователь с id={} не найден", newUser.getId());
             throw new NotFoundException("Пользователь с id " + newUser.getId() + " не найден");
         }
+        validateUser(newUser);
         User oldUser = users.get(newUser.getId());
         if (newUser.getEmail() != null && !newUser.getEmail().equalsIgnoreCase(oldUser.getEmail())) {
             if (users.values().stream()
@@ -60,6 +68,7 @@ public class InMemoryUserStorage implements UserStorage {
         }
         oldUser.setLogin(newUser.getLogin());
         oldUser.setBirthday(newUser.getBirthday());
+        oldUser.setFriends(newUser.getFriends() != null ? newUser.getFriends() : new HashMap<>());
         log.info("Пользователь успешно обновлен: id={}", oldUser.getId());
         return oldUser;
     }
@@ -88,6 +97,12 @@ public class InMemoryUserStorage implements UserStorage {
         log.debug("Очистка хранилища пользователей");
         users.clear();
         log.info("Хранилище пользователей очищено");
+    }
+
+    private void validateUser(User user) {
+        if (user.getBirthday() != null && user.getBirthday().isAfter(LocalDate.now())) {
+            throw new ConditionsNotMetException("Дата рождения не может быть в будущем");
+        }
     }
 
     private synchronized long getNextId() {

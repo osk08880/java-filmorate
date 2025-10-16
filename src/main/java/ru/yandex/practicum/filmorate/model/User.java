@@ -7,8 +7,8 @@ import jakarta.validation.constraints.Pattern;
 import lombok.Data;
 
 import java.time.LocalDate;
-import java.util.HashSet;
-import java.util.Set;
+import java.util.HashMap;
+import java.util.Map;
 
 @Data
 public class User {
@@ -22,5 +22,20 @@ public class User {
     private String name;
     @Past(message = "Дата рождения должна быть в прошлом")
     private LocalDate birthday;
-    private Set<Long> friends = new HashSet<>();
+    private Map<Long, FriendshipStatus> friends = new HashMap<>();
+
+    public enum FriendshipStatus {
+        UNCONFIRMED("НЕПОДТВЕРЖДЁННАЯ"),
+        CONFIRMED("ПОДТВЕРЖДЁННАЯ");
+
+        private final String value;
+
+        FriendshipStatus(String value) {
+            this.value = value;
+        }
+
+        public String getValue() {
+            return value;
+        }
+    }
 }
